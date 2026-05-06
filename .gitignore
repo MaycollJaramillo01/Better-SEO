@@ -1,0 +1,38 @@
+# dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+
+# production
+build/
+dist/
+
+# local env
+.env
+.env.*
+!.env.example
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+dev.log
+dev.err
+
+# TypeScript
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# local tooling and temporary screenshots
+.claude/
+.tmp-*.png
+*.clean
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
