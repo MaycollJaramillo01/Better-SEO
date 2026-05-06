@@ -100,12 +100,6 @@ export function AuditForm({
 
       setStatus("success");
       onAuditSuccess(parsedResponse.data.data);
-
-      const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      document.getElementById("results")?.scrollIntoView({
-        behavior: prefersReducedMotion ? "auto" : "smooth",
-        block: "start"
-      });
     } catch (error) {
       const message =
         error instanceof Error

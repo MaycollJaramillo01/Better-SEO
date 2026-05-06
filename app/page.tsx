@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Activity,
   ArrowRight,
@@ -306,6 +306,18 @@ export default function HomePage() {
   const [auditError, setAuditError] = useState<string>("");
   const [auditData, setAuditData] = useState<AuditData | null>(null);
   const [resetSignal, setResetSignal] = useState(0);
+  const auditStateRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (auditStatus === "idle") return;
+    const el = auditStateRef.current;
+    if (!el) return;
+    // rAF ensures the browser has painted the new panel before scrolling
+    requestAnimationFrame(() => {
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+    });
+  }, [auditStatus]);
 
   function handleAuditStart() {
     setAuditStatus("loading");
@@ -393,13 +405,15 @@ export default function HomePage() {
       {/* ============================================================
           AUDIT STATE — loading / error / success
           ============================================================ */}
-      {auditStatus === "loading" ? <LoadingPanel /> : null}
-      {auditStatus === "error" && auditError ? <ErrorPanel message={auditError} /> : null}
-      {auditStatus === "success" && auditData ? (
-        <section className="apple-section-light">
-          <AuditResults data={auditData} onReset={handleReset} />
-        </section>
-      ) : null}
+      <div ref={auditStateRef} style={{ scrollMarginTop: "60px" }}>
+        {auditStatus === "loading" ? <LoadingPanel /> : null}
+        {auditStatus === "error" && auditError ? <ErrorPanel message={auditError} /> : null}
+        {auditStatus === "success" && auditData ? (
+          <section className="apple-section-light">
+            <AuditResults data={auditData} onReset={handleReset} />
+          </section>
+        ) : null}
+      </div>
 
       {/* ============================================================
           FEATURES — full-bleed BLACK section
