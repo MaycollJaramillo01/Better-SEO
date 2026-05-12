@@ -1,11 +1,13 @@
 import * as cheerio from "cheerio";
 
 import type {
+  AnchorTextDistribution,
   AuditSummary,
   ExtractionContext,
   ExtractedMetadata,
   HeadingEntry,
   OpenGraphSummary,
+  OutboundDomainEntry,
   TwitterCardSummary
 } from "@/lib/audit/types";
 
@@ -288,6 +290,259 @@ function hasSitemapLink($: cheerio.CheerioAPI) {
   return $("link[rel='sitemap']").length > 0;
 }
 
+function getParagraphCount($: cheerio.CheerioAPI): number {
+  return $("p")
+    .toArray()
+    .filter((node) => normalizeText($(node).text()).split(" ").filter(Boolean).length >= 5)
+    .length;
+}
+
+function getReadingTimeMinutes(wordCount: number): number {
+  const wordsPerMinute = 238;
+  return Math.max(1, Math.round(wordCount / wordsPerMinute));
+}
+
+function getMetaRefresh($: cheerio.CheerioAPI): { hasMetaRefresh: boolean; metaRefreshDelay: number } {
+  const node = $("meta")
+    .toArray()
+    .find((n) => $(n).attr("http-equiv")?.toLowerCase() === "refresh");
+
+  if (!node) {
+    return { hasMetaRefresh: false, metaRefreshDelay: 0 };
+  }
+
+  const content = $(node).attr("content") ?? "";
+  const delay = parseInt(content.split(";")[0] ?? "0", 10);
+  return { hasMetaRefresh: true, metaRefreshDelay: isNaN(delay) ? 0 : delay };
+}
+
+function getCanonicalCount($: cheerio.CheerioAPI): number {
+  return $("link")
+    .toArray()
+    .filter((node) =>
+      $(node)
+        .attr("rel")
+        ?.toLowerCase()
+        .split(/\s+/)
+        .includes("canonical")
+    ).length;
+}
+
+function getLazyLoadedImages($: cheerio.CheerioAPI): number {
+  return $("img")
+    .toArray()
+    .filter((node) => $(node).attr("loading")?.toLowerCase() === "lazy").length;
+}
+
+function getDeprecatedHtml($: cheerio.CheerioAPI): { hasDeprecatedHtml: boolean; deprecatedTagsFound: string[] } {
+  const deprecated = ["center", "font", "marquee", "blink", "strike", "tt", "big", "basefont", "applet", "frame", "frameset", "noframes"];
+  const found = new Set<string>();
+
+  deprecated.forEach((tag) => {
+    if ($(tag).length > 0) {
+      found.add(`<${tag}>`);
+    }
+  });
+
+  $("table[width], table[bgcolor], td[width], td[bgcolor], td[valign], td[align], body[bgcolor], body[text], body[link]")
+    .toArray()
+    .forEach(() => {
+      found.add("presentational HTML attributes");
+    });
+
+  return {
+    hasDeprecatedHtml: found.size > 0,
+    deprecatedTagsFound: Array.from(found)
+  };
+}
+
+function getInlineCssCount($: cheerio.CheerioAPI): number {
+  return $("[style]").toArray().filter((node) => {
+    const style = $(node).attr("style") ?? "";
+    return style.trim().length > 0;
+  }).length;
+}
+
+function getAmpUrl($: cheerio.CheerioAPI): { hasAmp: boolean; ampUrl: string } {
+  const node = $("link[rel='amphtml']").first();
+  if (!node.length) {
+    return { hasAmp: false, ampUrl: "" };
+  }
+  return { hasAmp: true, ampUrl: node.attr("href") ?? "" };
+}
+
+function hasPreconnect($: cheerio.CheerioAPI): boolean {
+  return $("link[rel='preconnect'], link[rel='dns-prefetch']").length > 0;
+}
+
+function hasWebManifest($: cheerio.CheerioAPI): boolean {
+  return $("link[rel='manifest']").length > 0;
+}
+
+function getOgType($: cheerio.CheerioAPI): string {
+  return getMetaContent($, "property", "og:type");
+}
+
+function getMetaKeywords($: cheerio.CheerioAPI): string {
+  return getMetaContent($, "name", "keywords");
+}
+
+function getTitleMatchesH1($: cheerio.CheerioAPI, title: string): boolean {
+  if (!title) return false;
+  const h1Text = normalizeText($("h1").first().text());
+  if (!h1Text) return false;
+  return title.toLowerCase() === h1Text.toLowerCase();
+}
+
+function getNofollowLinkMetrics(
+  $: cheerio.CheerioAPI,
+  finalUrl: string
+): { internalNofollowLinks: number; externalNofollowLinks: number } {
+  const finalHost = new URL(finalUrl).hostname;
+  let internalNofollowLinks = 0;
+  let externalNofollowLinks = 0;
+
+  $("a")
+    .toArray()
+    .forEach((node) => {
+      const href = ($(node).attr("href") ?? "").trim();
+      const rel = ($(node).attr("rel") ?? "").toLowerCase();
+      const isNofollow = rel.split(/\s+/).includes("nofollow");
+
+      if (!href || href === "#" || /^javascript:/i.test(href)) return;
+      if (/^(mailto|tel):/i.test(href)) return;
+
+      try {
+        const parsed = new URL(href, finalUrl);
+        if (!["http:", "https:"].includes(parsed.protocol)) return;
+
+        if (isNofollow) {
+          if (parsed.hostname === finalHost) {
+            internalNofollowLinks += 1;
+          } else {
+            externalNofollowLinks += 1;
+          }
+        }
+      } catch {
+        // skip malformed
+      }
+    });
+
+  return { internalNofollowLinks, externalNofollowLinks };
+}
+
+const GENERIC_ANCHOR_PHRASES = new Set([
+  "click here", "here", "read more", "more", "learn more", "this", "link",
+  "website", "visit", "page", "article", "post", "download", "view", "see more",
+  "clic aquí", "más información", "ver más", "leer más", "aquí", "este"
+]);
+
+function classifyAnchorText(
+  text: string,
+  href: string,
+  brandDomain: string
+): keyof Omit<AnchorTextDistribution, "total"> {
+  const clean = text.toLowerCase().trim();
+
+  if (!clean) return "empty";
+
+  // Naked URL: anchor text itself looks like a URL
+  if (/^https?:\/\//i.test(clean) || /^www\./i.test(clean)) return "nakedUrl";
+
+  // Branded: contains the root domain name (without TLD)
+  const brandName = brandDomain.split(".")[0] ?? "";
+  if (brandName && clean.includes(brandName.toLowerCase())) return "branded";
+
+  // Generic
+  if (GENERIC_ANCHOR_PHRASES.has(clean)) return "generic";
+
+  return "keyword";
+}
+
+function getLinkProfile(
+  $: cheerio.CheerioAPI,
+  finalUrl: string
+): {
+  anchorText: AnchorTextDistribution;
+  outboundDomainCount: number;
+  topOutboundDomains: OutboundDomainEntry[];
+  topLinkedDomain: string;
+  topLinkedDomainCount: number;
+  outboundConcentration: number;
+} {
+  let finalHost = "";
+  let brandDomain = "";
+
+  try {
+    const parsed = new URL(finalUrl);
+    finalHost = parsed.hostname;
+    brandDomain = parsed.hostname.replace(/^www\./, "");
+  } catch {
+    // ignore
+  }
+
+  const domainCounts = new Map<string, number>();
+  const distribution: AnchorTextDistribution = {
+    branded: 0,
+    keyword: 0,
+    nakedUrl: 0,
+    generic: 0,
+    empty: 0,
+    total: 0
+  };
+
+  $("a")
+    .toArray()
+    .forEach((node) => {
+      const href = ($(node).attr("href") ?? "").trim();
+
+      if (!href || href === "#" || /^(javascript|mailto|tel):/i.test(href)) return;
+
+      let parsedHref: URL;
+      try {
+        parsedHref = new URL(href, finalUrl);
+      } catch {
+        return;
+      }
+
+      if (!["http:", "https:"].includes(parsedHref.protocol)) return;
+
+      // Only analyze external links for outbound profile
+      if (parsedHref.hostname !== finalHost) {
+        const outDomain = parsedHref.hostname.replace(/^www\./, "");
+        domainCounts.set(outDomain, (domainCounts.get(outDomain) ?? 0) + 1);
+
+        // Anchor text classification for external links
+        const anchorText = normalizeText($(node).text());
+        const category = classifyAnchorText(anchorText, href, brandDomain);
+        distribution[category] += 1;
+        distribution.total += 1;
+      }
+    });
+
+  // Build sorted domain list
+  const sortedDomains: OutboundDomainEntry[] = Array.from(domainCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([domain, count]) => ({ domain, count }));
+
+  const topOutboundDomains = sortedDomains.slice(0, 5);
+  const topEntry = sortedDomains[0];
+  const topLinkedDomain = topEntry?.domain ?? "";
+  const topLinkedDomainCount = topEntry?.count ?? 0;
+  const totalExternal = distribution.total;
+  const outboundConcentration =
+    totalExternal > 0 ? Math.round((topLinkedDomainCount / totalExternal) * 100) : 0;
+
+  return {
+    anchorText: distribution,
+    outboundDomainCount: domainCounts.size,
+    topOutboundDomains,
+    topLinkedDomain,
+    topLinkedDomainCount,
+    outboundConcentration
+  };
+}
+
 function getHeadingHierarchyIssues($: cheerio.CheerioAPI): string[] {
   const issues = new Set<string>();
   const nodes = $("h1, h2, h3, h4, h5, h6").toArray();
@@ -407,6 +662,24 @@ export function extractMetadata(
   const lang = normalizeText($("html").attr("lang") ?? "");
   const isHttps = new URL(finalUrl).protocol === "https:";
 
+  // --- New deep analysis ---
+  const wordCount = getVisibleWordCount($);
+  const paragraphCount = getParagraphCount($);
+  const readingTimeMinutes = getReadingTimeMinutes(wordCount);
+  const { hasMetaRefresh, metaRefreshDelay } = getMetaRefresh($);
+  const canonicalCount = getCanonicalCount($);
+  const lazyLoadedImages = getLazyLoadedImages($);
+  const { hasDeprecatedHtml, deprecatedTagsFound } = getDeprecatedHtml($);
+  const inlineCssCount = getInlineCssCount($);
+  const { hasAmp, ampUrl } = getAmpUrl($);
+  const ampPreconnect = hasPreconnect($);
+  const webManifest = hasWebManifest($);
+  const ogType = getOgType($);
+  const metaKeywords = getMetaKeywords($);
+  const { internalNofollowLinks, externalNofollowLinks } = getNofollowLinkMetrics($, finalUrl);
+  const titleMatchesH1 = getTitleMatchesH1($, normalizeText($("head title").first().text()));
+  const linkProfile = getLinkProfile($, finalUrl);
+
   let indexability: AuditSummary["indexability"] = "Indexable";
 
   if (statusCode >= 400 || isNoindex || xRobotsNoindex || context.discovery.robotsTxtBlocksAll) {
@@ -436,7 +709,7 @@ export function extractMetadata(
       externalLinks,
       emptyLinks,
       anchorsWithoutText,
-      wordCount: getVisibleWordCount($),
+      wordCount,
       hasCanonical: Boolean(canonicalUrl),
       canonicalUrl,
       canonicalMatchesFinalUrl,
@@ -477,7 +750,39 @@ export function extractMetadata(
       isRedirected: context.isRedirected,
       contentType: context.contentType,
       discovery: context.discovery,
-      ...urlAnalysis
+      ...urlAnalysis,
+      // New deep analysis fields
+      paragraphCount,
+      readingTimeMinutes,
+      hasMetaRefresh,
+      metaRefreshDelay,
+      canonicalCount,
+      lazyLoadedImages,
+      hasDeprecatedHtml,
+      deprecatedTagsFound,
+      inlineCssCount,
+      hasAmp,
+      ampUrl,
+      hasPreconnect: ampPreconnect,
+      hasWebManifest: webManifest,
+      ogType,
+      metaKeywords,
+      internalNofollowLinks,
+      externalNofollowLinks,
+      titleMatchesH1,
+      hasHstsHeader: context.hasHstsHeader,
+      hasXContentTypeOptions: context.hasXContentTypeOptions,
+      hasXFrameOptions: context.hasXFrameOptions,
+      // Link profile
+      anchorText: linkProfile.anchorText,
+      outboundDomainCount: linkProfile.outboundDomainCount,
+      topOutboundDomains: linkProfile.topOutboundDomains,
+      topLinkedDomain: linkProfile.topLinkedDomain,
+      topLinkedDomainCount: linkProfile.topLinkedDomainCount,
+      outboundConcentration: linkProfile.outboundConcentration,
+      // Open PageRank — populated by route.ts after fetching
+      openPageRank: null,
+      openPageRankFetched: false
     }
   };
 }

@@ -828,6 +828,313 @@ function buildIssues(summary: AuditSummary, statusCode: number) {
     );
   }
 
+  // ─── NEW DEEP ANALYSIS RULES ───────────────────────────────────────────────
+
+  if (summary.hasMetaRefresh) {
+    pushIssue(
+      issues,
+      recommendations,
+      {
+        severity: summary.metaRefreshDelay === 0 ? "critical" : "high",
+        category: "Technical",
+        title: "The page uses a meta refresh directive",
+        message: `A meta refresh was detected${summary.metaRefreshDelay > 0 ? ` with a ${summary.metaRefreshDelay}s delay` : " with an instant redirect (0s)"}. Search engines and users may be affected by unexpected redirects.`,
+        recommendation: "Replace meta refresh with a proper HTTP 301 redirect on the server, or remove it if the redirect is unintentional."
+      },
+      {
+        priority: "high",
+        title: "Replace meta refresh with a server-side redirect",
+        description:
+          "Meta refresh is deprecated for navigation. Use HTTP 301 redirects for permanent moves and 302 for temporary ones."
+      }
+    );
+  }
+
+  if (summary.canonicalCount > 1) {
+    pushIssue(
+      issues,
+      recommendations,
+      {
+        severity: "high",
+        category: "Canonical",
+        title: `Multiple canonical tags detected (${summary.canonicalCount})`,
+        message: "More than one canonical tag in the document head causes conflicting signals for search engines, which may ignore them all.",
+        recommendation: "Keep exactly one canonical tag pointing to the preferred version of this page."
+      },
+      {
+        priority: "high",
+        title: "Remove duplicate canonical tags",
+        description:
+          "When multiple canonical tags exist, search engines may ignore all of them. Keep a single, authoritative canonical per page."
+      }
+    );
+  }
+
+  if (summary.hasDeprecatedHtml && summary.deprecatedTagsFound.length > 0) {
+    pushIssue(
+      issues,
+      recommendations,
+      {
+        severity: "medium",
+        category: "HTML Quality",
+        title: "Deprecated HTML elements or attributes detected",
+        message: `The following deprecated elements were found: ${summary.deprecatedTagsFound.join(", ")}. These indicate technical debt and can affect rendering consistency.`,
+        recommendation: "Replace deprecated tags with CSS-based equivalents and update the markup to modern HTML5 standards."
+      },
+      {
+        priority: "medium",
+        title: "Remove deprecated HTML elements",
+        description:
+          "Modern HTML5 standards replace presentational tags with CSS. Cleaning up deprecated markup improves maintainability and accessibility."
+      }
+    );
+  }
+
+  if (summary.isHttps && !summary.hasHstsHeader) {
+    pushIssue(
+      issues,
+      recommendations,
+      {
+        severity: "medium",
+        category: "Security",
+        title: "HSTS header is missing",
+        message: "The page uses HTTPS but does not declare a Strict-Transport-Security (HSTS) header. HSTS prevents protocol downgrade attacks and improves trust signals.",
+        recommendation: "Configure the server to send a Strict-Transport-Security header with an appropriate max-age value."
+      },
+      {
+        priority: "medium",
+        title: "Enable HSTS on the server",
+        description:
+          "Add Strict-Transport-Security: max-age=31536000; includeSubDomains to enforce secure connections and protect users."
+      }
+    );
+  }
+
+  if (!summary.hasXContentTypeOptions) {
+    pushIssue(
+      issues,
+      recommendations,
+      {
+        severity: "low",
+        category: "Security",
+        title: "X-Content-Type-Options header is missing",
+        message: "The server does not send an X-Content-Type-Options header. This header prevents browsers from MIME-type sniffing, reducing certain attack vectors.",
+        recommendation: "Add X-Content-Type-Options: nosniff to your server configuration."
+      },
+      {
+        priority: "low",
+        title: "Add X-Content-Type-Options header",
+        description:
+          "Set X-Content-Type-Options: nosniff to prevent MIME sniffing attacks. This is a quick security win."
+      }
+    );
+  }
+
+  if (!summary.hasXFrameOptions) {
+    pushIssue(
+      issues,
+      recommendations,
+      {
+        severity: "low",
+        category: "Security",
+        title: "X-Frame-Options header is missing",
+        message: "The server does not send an X-Frame-Options header. Without it, the page may be embedded in iframes on other sites, enabling clickjacking attacks.",
+        recommendation: "Add X-Frame-Options: SAMEORIGIN or DENY to your server configuration."
+      },
+      {
+        priority: "low",
+        title: "Add X-Frame-Options header",
+        description:
+          "Set X-Frame-Options: SAMEORIGIN to protect users from clickjacking by preventing the page from being framed by third-party sites."
+      }
+    );
+  }
+
+  if (summary.titleMatchesH1 && summary.title) {
+    pushIssue(
+      issues,
+      recommendations,
+      {
+        severity: "low",
+        category: "Metadata",
+        title: "The title tag and H1 are identical",
+        message: `Both the title tag and the H1 use the same text: "${summary.title.substring(0, 80)}${summary.title.length > 80 ? "…" : ""}". This is a missed opportunity to target different intent signals.`,
+        recommendation: "Differentiate the title tag from the H1. The title can target search intent; the H1 can focus on the user-facing message."
+      },
+      {
+        priority: "low",
+        title: "Differentiate title tag from H1",
+        description:
+          "Use the title tag for keyword targeting and click-through, and the H1 for user-facing messaging. Keeping them different gives you two signals instead of one."
+      }
+    );
+  }
+
+  if (summary.imageCount > 5 && summary.lazyLoadedImages === 0) {
+    pushIssue(
+      issues,
+      recommendations,
+      {
+        severity: "low",
+        category: "Performance",
+        title: "No images use lazy loading",
+        message: `The page has ${summary.imageCount} images and none use the loading="lazy" attribute. Lazy loading defers off-screen images and can improve initial page load performance.`,
+        recommendation: 'Add loading="lazy" to images that appear below the fold.'
+      },
+      {
+        priority: "low",
+        title: "Implement lazy loading on images",
+        description:
+          'Adding loading="lazy" to below-the-fold images reduces initial page weight and improves perceived performance.'
+      }
+    );
+  }
+
+  if (summary.metaKeywords) {
+    pushIssue(
+      issues,
+      recommendations,
+      {
+        severity: "low",
+        category: "Metadata",
+        title: "Deprecated meta keywords tag detected",
+        message: "The meta keywords tag is ignored by all major search engines and has not influenced rankings since 2009. It adds unnecessary code weight.",
+        recommendation: "Remove the meta keywords tag to clean up the document head."
+      },
+      {
+        priority: "low",
+        title: "Remove meta keywords tag",
+        description:
+          "The meta keywords tag is obsolete. Removing it reduces markup noise without any negative SEO impact."
+      }
+    );
+  }
+
+  if (summary.internalNofollowLinks > 0) {
+    pushIssue(
+      issues,
+      recommendations,
+      {
+        severity: "low",
+        category: "Links",
+        title: "Internal links use the nofollow attribute",
+        message: `${summary.internalNofollowLinks} internal link${summary.internalNofollowLinks === 1 ? "" : "s"} carry a rel="nofollow" attribute. Adding nofollow to internal links unnecessarily limits how PageRank flows through your own site.`,
+        recommendation: "Review internal links with nofollow and remove the attribute unless there is a specific reason to restrict crawl flow."
+      },
+      {
+        priority: "low",
+        title: "Review internal nofollow links",
+        description:
+          "Internal nofollow links can limit crawl coverage and internal link equity. Remove nofollow on internal pages you want search engines to index."
+      }
+    );
+  }
+
+  if (summary.externalLinks > 10 && summary.externalNofollowLinks === 0) {
+    pushIssue(
+      issues,
+      recommendations,
+      {
+        severity: "low",
+        category: "Links",
+        title: "External links may be missing nofollow attributes",
+        message: `The page has ${summary.externalLinks} outbound links and none use rel="nofollow" or rel="sponsored". Consider whether all external links represent editorial endorsements.`,
+        recommendation: 'Add rel="nofollow" or rel="sponsored" to commercial, user-generated or untrusted outbound links.'
+      },
+      {
+        priority: "low",
+        title: "Review external link attribution",
+        description:
+          'Use rel="nofollow" on paid, sponsored or user-generated links. Editorial outbound links may remain as-is.'
+      }
+    );
+  }
+
+  if (summary.wordCount >= 250 && summary.paragraphCount === 0) {
+    pushIssue(
+      issues,
+      recommendations,
+      {
+        severity: "low",
+        category: "Content",
+        title: "Content lacks paragraph structure",
+        message: "The page has visible text but very few or no paragraph elements. Well-structured paragraphs improve readability and help search engines segment the content.",
+        recommendation: "Wrap body content in proper <p> tags and organize text into logical paragraphs."
+      },
+      {
+        priority: "low",
+        title: "Improve content paragraph structure",
+        description:
+          "Structured paragraphs make content easier to read, index and render consistently across devices."
+      }
+    );
+  }
+
+  // ─── LINK PROFILE RULES ───────────────────────────────────────────────────
+
+  if (summary.outboundDomainCount > 0 && summary.outboundConcentration >= 70) {
+    pushIssue(
+      issues,
+      recommendations,
+      {
+        severity: "medium",
+        category: "Link Profile",
+        title: "Outbound links are highly concentrated on one domain",
+        message: `${summary.outboundConcentration}% of external links point to ${summary.topLinkedDomain} (${summary.topLinkedDomainCount} links). High concentration may signal thin or biased link diversity.`,
+        recommendation: "Diversify outbound references. Link to multiple authoritative sources relevant to the content."
+      },
+      {
+        priority: "medium",
+        title: "Diversify outbound link targets",
+        description:
+          "Pointing most external links to a single domain can look unnatural. Reference a variety of authoritative sources related to the topic."
+      }
+    );
+  }
+
+  if (summary.externalLinks === 0 && summary.wordCount >= 400) {
+    pushIssue(
+      issues,
+      recommendations,
+      {
+        severity: "low",
+        category: "Link Profile",
+        title: "The page has no outbound links",
+        message: "No external links were found. Pages with substantive content usually cite or reference relevant external sources, which signals editorial quality.",
+        recommendation: "Add relevant external references to authoritative sources that support the content."
+      },
+      {
+        priority: "low",
+        title: "Add outbound editorial links",
+        description:
+          "Linking out to relevant, trustworthy sources can help signal editorial quality and topical depth."
+      }
+    );
+  }
+
+  const { branded, keyword, nakedUrl, generic, empty, total } = summary.anchorText;
+  if (total > 5 && generic + empty > total * 0.6) {
+    pushIssue(
+      issues,
+      recommendations,
+      {
+        severity: "low",
+        category: "Link Profile",
+        title: "Most outbound anchor text is generic or empty",
+        message: `${generic + empty} of ${total} external link anchors use generic phrases or have no text. Descriptive anchor text provides stronger context signals.`,
+        recommendation: "Use descriptive, keyword-relevant anchor text for outbound links where possible."
+      },
+      {
+        priority: "low",
+        title: "Improve outbound anchor text quality",
+        description:
+          "Generic anchors like 'click here' or empty links miss the opportunity to pass topical context to the linked page and to signal relevance to crawlers."
+      }
+    );
+  }
+
+  void branded; void keyword; void nakedUrl; // referenced via destructuring — suppress unused vars
+
   if (issues.length === 0) {
     addRecommendation(recommendations, {
       priority: "low",

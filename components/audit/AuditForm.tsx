@@ -99,7 +99,8 @@ export function AuditForm({
       }
 
       setStatus("success");
-      onAuditSuccess(parsedResponse.data.data);
+      // summary is z.unknown() client-side (Zod v4 type-depth workaround); server enforces full type.
+      onAuditSuccess(parsedResponse.data.data as unknown as AuditData);
     } catch (error) {
       const message =
         error instanceof Error

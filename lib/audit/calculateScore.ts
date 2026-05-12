@@ -98,7 +98,35 @@ export function calculateScore(summary: AuditSummary, statusCode: number) {
     score += 3;
   }
 
-  if (summary.wordCount >= 250) {
+  if (summary.wordCount >= 700) {
+    score += 4;
+  } else if (summary.wordCount >= 250) {
+    score += 2;
+  }
+
+  // Security headers
+  if (summary.hasHstsHeader) {
+    score += 3;
+  }
+  if (summary.hasXContentTypeOptions) {
+    score += 2;
+  }
+  if (summary.hasXFrameOptions) {
+    score += 2;
+  }
+
+  // Lazy loading (performance signal)
+  if (summary.imageCount > 3 && summary.lazyLoadedImages > 0) {
+    score += 2;
+  }
+
+  // Preconnect hints
+  if (summary.hasPreconnect) {
+    score += 2;
+  }
+
+  // Content structure
+  if (summary.paragraphCount >= 5) {
     score += 2;
   }
 
@@ -134,12 +162,57 @@ export function calculateScore(summary: AuditSummary, statusCode: number) {
     score -= 3;
   }
 
+  // Penalize meta refresh
+  if (summary.hasMetaRefresh) {
+    score -= summary.metaRefreshDelay === 0 ? 8 : 5;
+  }
+
+  // Penalize multiple canonical tags
+  if (summary.canonicalCount > 1) {
+    score -= 6;
+  }
+
+  // Penalize deprecated HTML
+  if (summary.hasDeprecatedHtml) {
+    score -= 3;
+  }
+
+  // Penalize title === H1 (missed opportunity)
+  if (summary.titleMatchesH1) {
+    score -= 2;
+  }
+
   if (
     !summary.discovery.sitemapXmlExists &&
     !summary.hasSitemapLink &&
     !summary.discovery.robotsTxtHasSitemap
   ) {
     score -= 3;
+  }
+
+  // Link profile scoring
+  if (summary.outboundDomainCount >= 3) {
+    score += 2;
+  }
+
+  const { total: anchorTotal, keyword: anchorKeyword } = summary.anchorText;
+  if (anchorTotal > 0 && anchorKeyword / anchorTotal >= 0.4) {
+    score += 2;
+  }
+
+  if (summary.outboundConcentration >= 70 && summary.outboundDomainCount > 0) {
+    score -= 3;
+  }
+
+  // Open PageRank bonus (if available)
+  if (summary.openPageRankFetched && summary.openPageRank !== null) {
+    if (summary.openPageRank >= 6) {
+      score += 5;
+    } else if (summary.openPageRank >= 3) {
+      score += 3;
+    } else if (summary.openPageRank >= 1) {
+      score += 1;
+    }
   }
 
   if (statusCode >= 400) {

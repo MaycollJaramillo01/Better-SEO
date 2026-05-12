@@ -3,6 +3,7 @@ import { ZodError } from "zod";
 
 import { analyzeSeo } from "@/lib/audit/analyzeSeo";
 import { discoverSiteFiles } from "@/lib/audit/discoverSiteFiles";
+import { fetchOpenPageRank } from "@/lib/audit/fetchBacklinkData";
 import { fetchWebsite } from "@/lib/audit/fetchWebsite";
 import { normalizeUrl } from "@/lib/audit/normalizeUrl";
 import { AuditError } from "@/lib/audit/types";
@@ -27,7 +28,10 @@ export async function POST(request: Request) {
       responseTimeMs,
       pageSizeBytes,
       isRedirected,
-      xRobotsTag
+      xRobotsTag,
+      hasHstsHeader,
+      hasXContentTypeOptions,
+      hasXFrameOptions
     } = await fetchWebsite(normalizedUrl);
     const discovery = await discoverSiteFiles(finalUrl);
 
@@ -37,8 +41,17 @@ export async function POST(request: Request) {
       pageSizeBytes,
       isRedirected,
       xRobotsTag,
-      discovery
+      discovery,
+      hasHstsHeader,
+      hasXContentTypeOptions,
+      hasXFrameOptions
     });
+
+    // Fetch Open PageRank in parallel — never blocks or throws
+    const oprResult = await fetchOpenPageRank(finalUrl);
+    data.summary.openPageRank = oprResult.openPageRank;
+    data.summary.openPageRankFetched = oprResult.fetched;
+
     const response = AuditSuccessResponseSchema.parse({
       success: true,
       data

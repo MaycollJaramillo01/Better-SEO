@@ -1,9 +1,9 @@
 const navItems = [
-  { label: "Audit", href: "#hero" },
-  { label: "Features", href: "#features" },
-  { label: "Checks", href: "#checks" },
-  { label: "Agencies", href: "#agencies" },
-  { label: "FAQ", href: "#faq" }
+  { label: "Free Audit", href: "#audit" },
+  { label: "Services",   href: "#services" },
+  { label: "Why Us",     href: "#why" },
+  { label: "How It Works", href: "#how" },
+  { label: "FAQ",        href: "#faq" }
 ];
 
 /**
@@ -48,10 +48,10 @@ export function Header() {
 
         {/* Right CTA */}
         <a
-          href="#hero"
-          className="rounded-full px-3 py-1 text-[12px] font-normal text-text-main/85 transition-colors hover:text-text-main"
+          href="#contact"
+          className="rounded-full bg-[#1d1d1f] px-4 py-1.5 text-[12px] font-medium text-white transition hover:bg-black"
         >
-          Run audit
+          Book a call
         </a>
       </div>
     </header>

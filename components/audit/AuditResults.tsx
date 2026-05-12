@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  ArrowRight,
+  BarChart3,
   BookOpenText,
   Clock3,
   FileText,
@@ -16,7 +18,13 @@ import {
   Server,
   ShieldCheck,
   Share2,
-  Sigma
+  Sigma,
+  Star,
+  Timer,
+  ShieldAlert,
+  ImagePlay,
+  Code2,
+  ExternalLink
 } from "lucide-react";
 
 import { AuditScore } from "@/components/audit/AuditScore";
@@ -83,6 +91,24 @@ export function AuditResults({ data, onReset }: AuditResultsProps) {
               <Badge variant="neutral">{summary.responseTimeMs}ms response</Badge>
               <Badge variant={summary.discovery.sitemapXmlExists ? "success" : "warning"}>
                 Sitemap {summary.discovery.sitemapXmlExists ? "found" : "missing"}
+              </Badge>
+              {summary.hasMetaRefresh && (
+                <Badge variant="error">Meta refresh</Badge>
+              )}
+              {summary.canonicalCount > 1 && (
+                <Badge variant="error">{summary.canonicalCount} canonicals</Badge>
+              )}
+              {summary.hasDeprecatedHtml && (
+                <Badge variant="warning">Deprecated HTML</Badge>
+              )}
+              <Badge
+                variant={
+                  summary.hasHstsHeader && summary.hasXContentTypeOptions && summary.hasXFrameOptions
+                    ? "success"
+                    : "warning"
+                }
+              >
+                Security headers {[summary.hasHstsHeader, summary.hasXContentTypeOptions, summary.hasXFrameOptions].filter(Boolean).length}/3
               </Badge>
             </div>
           </div>
@@ -479,6 +505,212 @@ export function AuditResults({ data, onReset }: AuditResultsProps) {
             status={summary.xRobotsNoindex ? "Blocks index" : "No block"}
             tone={summary.xRobotsNoindex ? "error" : "success"}
           />
+          <MetricCard
+            title="Reading Time"
+            value={`~${summary.readingTimeMinutes} min`}
+            helper={`Based on ${summary.wordCount} words across ${summary.paragraphCount} paragraphs.`}
+            icon={Timer}
+            status={summary.readingTimeMinutes >= 2 ? "Substantial" : "Short"}
+            tone={summary.readingTimeMinutes >= 2 ? "success" : "warning"}
+          />
+          <MetricCard
+            title="Security Headers"
+            value={[summary.hasHstsHeader, summary.hasXContentTypeOptions, summary.hasXFrameOptions].filter(Boolean).length + " / 3"}
+            helper={`HSTS: ${summary.hasHstsHeader ? "✓" : "✗"} · X-Content-Type: ${summary.hasXContentTypeOptions ? "✓" : "✗"} · X-Frame: ${summary.hasXFrameOptions ? "✓" : "✗"}`}
+            icon={ShieldAlert}
+            status={
+              summary.hasHstsHeader && summary.hasXContentTypeOptions && summary.hasXFrameOptions
+                ? "Hardened"
+                : summary.hasHstsHeader || summary.hasXContentTypeOptions
+                  ? "Partial"
+                  : "Missing"
+            }
+            tone={
+              summary.hasHstsHeader && summary.hasXContentTypeOptions && summary.hasXFrameOptions
+                ? "success"
+                : summary.hasHstsHeader || summary.hasXContentTypeOptions
+                  ? "warning"
+                  : "error"
+            }
+          />
+          <MetricCard
+            title="Lazy Loading"
+            value={`${summary.lazyLoadedImages} / ${summary.imageCount}`}
+            helper={
+              summary.imageCount === 0
+                ? "No images detected on this page."
+                : `${summary.lazyLoadedImages} image${summary.lazyLoadedImages === 1 ? "" : "s"} use loading="lazy".`
+            }
+            icon={ImagePlay}
+            status={
+              summary.imageCount === 0 || summary.lazyLoadedImages > 0
+                ? "Active"
+                : "Missing"
+            }
+            tone={
+              summary.imageCount === 0 || summary.lazyLoadedImages > 0
+                ? "success"
+                : "warning"
+            }
+          />
+          <MetricCard
+            title="Deprecated HTML"
+            value={summary.hasDeprecatedHtml ? summary.deprecatedTagsFound.length + " types" : "None"}
+            helper={
+              summary.hasDeprecatedHtml
+                ? `Found: ${summary.deprecatedTagsFound.slice(0, 3).join(", ")}${summary.deprecatedTagsFound.length > 3 ? "…" : ""}`
+                : "No deprecated HTML tags detected."
+            }
+            icon={Code2}
+            status={summary.hasDeprecatedHtml ? "Found" : "Clean"}
+            tone={summary.hasDeprecatedHtml ? "warning" : "success"}
+          />
+          <MetricCard
+            title="Meta Refresh"
+            value={summary.hasMetaRefresh ? `${summary.metaRefreshDelay}s delay` : "None"}
+            helper={
+              summary.hasMetaRefresh
+                ? "Meta refresh detected — use HTTP redirects instead."
+                : "No meta refresh directive found."
+            }
+            icon={Clock3}
+            status={summary.hasMetaRefresh ? "Detected" : "Clean"}
+            tone={summary.hasMetaRefresh ? "error" : "success"}
+          />
+          <MetricCard
+            title="External Link Nofollow"
+            value={`${summary.externalNofollowLinks} / ${summary.externalLinks}`}
+            helper="Outbound links with rel=nofollow vs total external links."
+            icon={ExternalLink}
+            status={summary.externalLinks === 0 ? "None" : summary.externalNofollowLinks > 0 ? "Tagged" : "Review"}
+            tone={summary.externalLinks === 0 || summary.externalNofollowLinks > 0 ? "success" : "warning"}
+          />
+        </div>
+      </section>
+
+      {/* ── Link Profile ────────────────────────────────────────────── */}
+      <section className="premium-panel mt-10 p-6 sm:p-7">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary-dark">
+              Link Profile
+            </p>
+            <h3 className="mt-3 text-2xl font-semibold text-text-main">
+              Outbound link analysis
+            </h3>
+          </div>
+          <div className="flex items-center gap-2">
+            {summary.openPageRankFetched && summary.openPageRank !== null && (
+              <Badge variant="info">
+                <Star className="mr-1 inline h-3 w-3" aria-hidden="true" />
+                OPR {summary.openPageRank}/10
+              </Badge>
+            )}
+            <Badge variant="neutral">{summary.outboundDomainCount} unique domains</Badge>
+          </div>
+        </div>
+
+        <div className="mt-6 grid gap-6 xl:grid-cols-2">
+          {/* Anchor Text Distribution */}
+          <div className="rounded-[24px] border border-border-soft/80 bg-white/76 p-5">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="h-4 w-4 text-primary-dark" aria-hidden="true" />
+              <p className="text-sm font-semibold text-text-main">Anchor text distribution</p>
+            </div>
+            <p className="mt-1 text-[12px] text-text-muted">
+              Breakdown of {summary.anchorText.total} external link anchors
+            </p>
+
+            {summary.anchorText.total === 0 ? (
+              <p className="mt-4 text-[13px] text-text-muted">No external links detected.</p>
+            ) : (
+              <div className="mt-4 space-y-2">
+                {(
+                  [
+                    { key: "keyword" as const, label: "Keyword", color: "bg-[#2997ff]" },
+                    { key: "branded" as const, label: "Branded", color: "bg-[#34c759]" },
+                    { key: "nakedUrl" as const, label: "Naked URL", color: "bg-[#ff9f0a]" },
+                    { key: "generic" as const, label: "Generic", color: "bg-[#ff6b6b]" },
+                    { key: "empty" as const, label: "Empty", color: "bg-[#c7c7cc]" }
+                  ] as const
+                ).map(({ key, label, color }) => {
+                  const count = summary.anchorText[key];
+                  const pct = summary.anchorText.total > 0
+                    ? Math.round((count / summary.anchorText.total) * 100)
+                    : 0;
+
+                  return (
+                    <div key={key}>
+                      <div className="flex justify-between text-[12px]">
+                        <span className="text-text-muted">{label}</span>
+                        <span className="font-medium text-text-main">{count} ({pct}%)</span>
+                      </div>
+                      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-[var(--border-soft)]">
+                        <div
+                          className={`h-full rounded-full ${color} transition-all duration-500`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Top Outbound Domains */}
+          <div className="rounded-[24px] border border-border-soft/80 bg-white/76 p-5">
+            <div className="flex items-center gap-2">
+              <ExternalLink className="h-4 w-4 text-primary-dark" aria-hidden="true" />
+              <p className="text-sm font-semibold text-text-main">Top outbound domains</p>
+            </div>
+            <p className="mt-1 text-[12px] text-text-muted">
+              {summary.outboundDomainCount} unique domain{summary.outboundDomainCount !== 1 ? "s" : ""} referenced
+              {summary.outboundConcentration > 0 && ` — ${summary.outboundConcentration}% concentration on top domain`}
+            </p>
+
+            {summary.topOutboundDomains.length === 0 ? (
+              <p className="mt-4 text-[13px] text-text-muted">No external links detected.</p>
+            ) : (
+              <div className="mt-4 space-y-2">
+                {summary.topOutboundDomains.map((entry, idx) => {
+                  const maxCount = summary.topOutboundDomains[0]?.count ?? 1;
+                  const barPct = Math.round((entry.count / maxCount) * 100);
+                  return (
+                    <div key={entry.domain}>
+                      <div className="flex justify-between text-[12px]">
+                        <span className="truncate text-text-muted" title={entry.domain}>
+                          {idx + 1}. {entry.domain}
+                        </span>
+                        <span className="ml-2 shrink-0 font-medium text-text-main">
+                          {entry.count} link{entry.count !== 1 ? "s" : ""}
+                        </span>
+                      </div>
+                      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-[var(--border-soft)]">
+                        <div
+                          className="h-full rounded-full bg-[#2997ff] transition-all duration-500"
+                          style={{ width: `${barPct}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* OPR score row at bottom if available */}
+            {summary.openPageRankFetched && (
+              <div className="mt-5 flex items-center justify-between rounded-[14px] bg-[#f5f5f7] px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <Star className="h-3.5 w-3.5 text-[#ff9f0a]" aria-hidden="true" />
+                  <span className="text-[12px] font-medium text-text-main">Open PageRank</span>
+                </div>
+                <span className="text-[13px] font-semibold text-text-main">
+                  {summary.openPageRank !== null ? `${summary.openPageRank} / 10` : "Not indexed yet"}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       </section>
 
@@ -555,23 +787,24 @@ export function AuditResults({ data, onReset }: AuditResultsProps) {
             ))}
           </div>
 
-          <div className="mt-10 rounded-2xl bg-[#f5f5f7] p-8">
-            <h3 className="text-[24px] font-semibold tracking-[-0.02em] text-text-main">
-              Need a deeper SEO audit?
+          <div className="mt-10 rounded-2xl bg-[#1d1d1f] p-8">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#2997ff]">
+              Next step
+            </p>
+            <h3 className="mt-3 text-[24px] font-semibold tracking-[-0.02em] text-white">
+              Turn these findings into a growth plan.
             </h3>
-            <p className="mt-3 max-w-2xl text-[15px] leading-[1.6] text-text-muted">
-              Get a professional review with technical SEO priorities, implementation guidance
-              and next-step recommendations.
+            <p className="mt-3 max-w-2xl text-[15px] leading-[1.6] text-[#a1a1a6]">
+              Book a free 30-minute strategy call. We&apos;ll walk through your results
+              together, explain what they mean for your business and map out the highest-impact
+              fixes — plus a content strategy to keep traffic growing month after month.
             </p>
             <a
               href="#contact"
-              className={buttonStyles({
-                variant: "primary",
-                size: "lg",
-                className: "mt-6 w-full sm:w-fit"
-              })}
+              className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#2997ff] px-8 py-3 text-[15px] font-semibold text-white transition hover:bg-[#0077ed] active:scale-[0.98]"
             >
-              Request Professional Review
+              Book your free strategy call
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
             </a>
           </div>
         </section>

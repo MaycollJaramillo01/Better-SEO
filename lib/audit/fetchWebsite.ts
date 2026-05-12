@@ -135,6 +135,9 @@ export async function fetchWebsite(url: string): Promise<FetchWebsiteResult> {
     const pageSizeBytes = Buffer.byteLength(html, "utf8");
     const isRedirected = response.redirected;
     const xRobotsTag = response.headers.get("x-robots-tag") ?? "";
+    const hasHstsHeader = Boolean(response.headers.get("strict-transport-security"));
+    const hasXContentTypeOptions = Boolean(response.headers.get("x-content-type-options"));
+    const hasXFrameOptions = Boolean(response.headers.get("x-frame-options"));
 
     return {
       html,
@@ -144,7 +147,10 @@ export async function fetchWebsite(url: string): Promise<FetchWebsiteResult> {
       responseTimeMs,
       pageSizeBytes,
       isRedirected,
-      xRobotsTag
+      xRobotsTag,
+      hasHstsHeader,
+      hasXContentTypeOptions,
+      hasXFrameOptions
     };
   } catch (error) {
     if (error instanceof AuditError) {
