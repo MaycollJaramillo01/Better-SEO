@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   ArrowRight,
   BarChart3,
@@ -68,6 +69,33 @@ type AuditResultsProps = {
 export function AuditResults({ data, onReset }: AuditResultsProps) {
   const issueGroups = groupIssues(data.issues);
   const summary = data.summary;
+  const [pdfStatus, setPdfStatus] = useState<"idle" | "loading" | "error">("idle");
+
+  async function handleDownloadPdf() {
+    setPdfStatus("loading");
+    try {
+      const response = await fetch("/api/report", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ success: true, data })
+      });
+
+      if (!response.ok) throw new Error("PDF generation failed");
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download =
+        `seo-audit-${data.finalUrl.replace(/^https?:\/\//, "").replace(/[^a-z0-9]/gi, "-").slice(0, 50)}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setPdfStatus("idle");
+    } catch {
+      setPdfStatus("error");
+      setTimeout(() => setPdfStatus("idle"), 3000);
+    }
+  }
 
   return (
     <section id="results" className="section-shell fade-up py-16 sm:py-20" aria-live="polite">
@@ -122,11 +150,23 @@ export function AuditResults({ data, onReset }: AuditResultsProps) {
             </button>
             <button
               type="button"
-              disabled
+              onClick={handleDownloadPdf}
+              disabled={pdfStatus === "loading"}
               className={buttonStyles({ variant: "outline", className: "justify-between gap-3" })}
             >
-              <span>Download PDF</span>
-              <Badge variant="neutral">Coming soon</Badge>
+              {pdfStatus === "loading" ? (
+                <>
+                  <span>Generating PDF…</span>
+                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                </>
+              ) : pdfStatus === "error" ? (
+                <span className="text-[var(--coral-dark)]">Failed — try again</span>
+              ) : (
+                <span>Download PDF</span>
+              )}
             </button>
           </div>
         </div>
